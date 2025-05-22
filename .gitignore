@@ -1,4 +1,6 @@
 cassava-leaf-disease-classification/
 EfficientNet/*.pth 
+EfficientNet/*.csv
 VIT/*.pth 
-
+VIT/*.csv
+Late-Fusion/*.csv
