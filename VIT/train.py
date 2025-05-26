@@ -13,7 +13,7 @@ from torchvision import transforms
 from torchvision.models import resnext50_32x4d, vit_b_16, vit_b_32, vit_l_32, vit_h_14
 from PIL import Image
 from tqdm import tqdm
-
+from torchvision.models import vit_h_14, ViT_H_14_Weights
 
 # -----------------------------
 # Custom Dataset for Cassava
@@ -90,17 +90,15 @@ class TestDataset(Dataset):
 # -----------------------------
 # Main Training & Testing Script
 # -----------------------------
-
-
 def main():
     # Device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     # Hyperparams
-    num_epochs = 10
+    num_epochs = 25
     batch_size = 4
-    learning_rate = 0.0007492
+    learning_rate = 1e-3
 
     base_dir = '../cassava-leaf-disease-classification'
     train_csv = os.path.join(base_dir, 'train.csv')
@@ -109,18 +107,18 @@ def main():
 
     # Transforms
     transform_train = transforms.Compose([
-        transforms.Resize((480, 360)),
+        transforms.Resize((800, 600)),
         transforms.RandomHorizontalFlip(p=0.6),
         transforms.RandomAdjustSharpness(3, p=0.45),
-        transforms.RandomResizedCrop((224, 224)),
+        transforms.RandomResizedCrop((518, 518)),
         transforms.ColorJitter(brightness=0.25, contrast=0.22, saturation=0.2, hue=0.15),
         transforms.RandomRotation(35),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     transform_val = transforms.Compose([
-        transforms.Resize((480, 360)),
-        transforms.CenterCrop((224, 224)),
+        transforms.Resize((800, 600)),
+        transforms.CenterCrop((518, 518)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
@@ -151,8 +149,8 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
     # Model
-    model = vit_b_16(pretrained=True).to(device)
-    # model = vision_transformer.VisionTransformer
+    weights = ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1
+    model = vit_h_14(weights=weights).to(device)
     for param in model.parameters(): param.requires_grad = False
     for param in model.heads.parameters(): param.requires_grad = True
 
@@ -168,10 +166,9 @@ def main():
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW([
-        # {'params': model.heads.parameters(), 'lr': learning_rate * 0.35},
         {'params': model.heads.parameters(), 'lr': learning_rate}
-    ], weight_decay=0.01)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
+    ], weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode='max', factor=0.1, patience=1)
 
     best_val_acc = 0.0
 
@@ -232,10 +229,9 @@ def main():
                 # Collecting all labels and predictions
                 val_labels.extend(labels.cpu().numpy())
                 val_predictions.extend(predicted.cpu().numpy())
-        #val_loss = val_loss / total_val
+
         val_loss = val_loss 
         val_acc = 100. * correct_val / total_val
-
 
         print(f"Epoch [{epoch+1}/{num_epochs}], Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
         
@@ -249,7 +245,7 @@ def main():
         # Save best model based on validation accuracy
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), 'best_model.pth')
+            torch.save(model.state_dict(), 'best_model_vit.pth')
     
         scheduler.step()
 

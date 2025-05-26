@@ -95,34 +95,28 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    start_time = time.time()
-
     # Hyperparams
-    num_epochs = 5
-    batch_size = 4
-    learning_rate = 0.001492
+    batch_size = 1
 
     base_dir = '../cassava-leaf-disease-classification'
     train_csv = os.path.join(base_dir, 'train.csv')
     img_dir = os.path.join(base_dir, 'train_images')
     label_map = os.path.join(base_dir, 'label_num_to_disease_map.json')
 
-    weights = EfficientNet_B7_Weights.IMAGENET1K_V1
-    default_preprocess = weights.transforms()
     # Transforms
     transform_train = transforms.Compose([
-        transforms.Resize((480, 360)),
+        transforms.Resize((800, 600)),
         transforms.RandomHorizontalFlip(p=0.6),
         transforms.RandomAdjustSharpness(3, p=0.45),
-        transforms.RandomResizedCrop((224, 224)),
+        transforms.RandomResizedCrop((518, 518)),
         transforms.ColorJitter(brightness=0.25, contrast=0.22, saturation=0.2, hue=0.15),
         transforms.RandomRotation(35),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     transform_val = transforms.Compose([
-        transforms.Resize((480, 360)),
-        transforms.CenterCrop((224, 224)),
+        transforms.Resize((800, 600)),
+        transforms.CenterCrop((518, 518)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
@@ -133,13 +127,7 @@ def main():
                                   img_dir=img_dir,
                                   label_map_file=label_map,
                                   transform=transform_train)
-    # 80-20 split for train/val
-    val_size = int(0.2 * len(full_dataset))
-    train_size = len(full_dataset) - val_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
-    # Override val transform
-    val_dataset.dataset.transform = transform_val
 
     # Test dataset
     test_csv = os.path.join(base_dir, 'sample_submission.csv')
@@ -152,27 +140,23 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
     # Model
-    # Model
-    model = vit_b_16(pretrained=True).to(device)
-    # model = vision_transformer.VisionTransformer
+    model = vit_h_14(weights=None, image_size=518).to(device)
     for param in model.parameters(): param.requires_grad = False
     for param in model.heads.parameters(): param.requires_grad = True
 
     # Replace the classification head
     in_features = model.heads.head.in_features
 
-    model.fc = nn.Sequential(
+    model.heads.head = nn.Sequential(
         nn.Linear(in_features, 512),
         nn.ReLU(),
         nn.Dropout(0.5),
-        nn.Linear(512, len(full_dataset.label_to_idx))
+        nn.Linear(512, 5)
     ).to(device)
 
 
-
-
     # After training, reload best model.
-    model.load_state_dict(torch.load('best_model.pth'))
+    model.load_state_dict(torch.load('best_model_vit.pth'))
     model.eval()
     idx_to_label = full_dataset.idx_to_label
 
